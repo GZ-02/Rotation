@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "loadppm.h"
-
+#include "Vertex.h"
 
 
 
@@ -60,10 +60,18 @@ enum DisplayModeType { TEXTURED_QUAD = 1, ICICLE = 2, ICICLE2 = 3, ICICLE3 = 4, 
 
 DisplayModeType DisplayMode = TEXTURED_QUAD;
 
-unsigned int W_fen = 800;  // screen width
-unsigned int H_fen = 800;  // screen height
+unsigned int W_fen = 650;  // screen width
+unsigned int H_fen = 650;  // screen height
 
-
+/******************************* Our variables ****************************************/
+float iceX = 0, iceY = 0;
+float fireX = 0, fireY = 0;
+float rotationX = 0, rotationY = 0, rotationZ = 0;
+boolean attackLaunched = false;
+float textureX = 0.0, textureY = 0.0;
+Vec3Df direction;
+Vec3Df previousPosition = Vec3Df(0, 1, 0);
+GLfloat angleOfIcicle = 0;
 //an array of texture (indices)
 std::vector<GLuint> Texture;
 
@@ -86,15 +94,12 @@ std::vector<float> SurfaceTexCoords2f;
 std::vector<unsigned int> SurfaceTriangles3ui;
 
 
+
+
 //Declare your own global variables here:
 int myVariableThatServesNoPurpose;
-float textureX = 0.0, textureY = 0.0;
+
 boolean moveTexture = false;
-double AXIS_X_MIN = -50.0, AXIS_X_MAX = 50, AXIS_Y_MIN = -100.0, AXIS_Y_MAX = 100.0, AXIS_Z_MIN = -40.0, AXIS_Z_MAX = 40.0;
-
-
-
-
 ////////// Draw Functions 
 
 /**
@@ -149,7 +154,6 @@ void drawQuad()
 	glTexCoord2f(textureX, textureY);
 	glVertex3f(0, 0, 0);
 	glEnd();
-
 	/*
 	glBegin(GL_QUADS);
 
@@ -194,7 +198,7 @@ void drawIcicle() {
 }
 
 
-void drawIcicle2() {
+void drawIcicle2(float x, float y) {
 	glPushAttrib(GL_ALL_ATTRIB_BITS);
 	glColor3f(1, 1, 1);
 	glNormal3f(0, 0, 1);
@@ -206,15 +210,15 @@ void drawIcicle2() {
 
 	glBegin(GL_POLYGON);
 	glTexCoord2f(textureX, textureY + 1);
-	glVertex3f(-0.1, -1, 0);
+	glVertex3f(x - 0.1, y - 1, 0);
 	glTexCoord2f(textureX + 1, textureY);
-	glVertex3f(0.1, -1, 0);
+	glVertex3f(x + 0.1, y - 1, 0);
 	glTexCoord2f(textureX, textureY);
-	glVertex3f(0.2, -0.8, 0);
+	glVertex3f(x + 0.2, y - 0.8, 0);
 	glTexCoord2f(textureX + 1, textureY);
-	glVertex3f(0, 0.2, 0);
+	glVertex3f(x, y + 0.2, 0);
 	glTexCoord2f(textureX, textureY);
-	glVertex3f(-0.2, -0.8, 0);
+	glVertex3f(x - 0.2, y - 0.8, 0);
 	glEnd();
 
 	glPopAttrib();
@@ -249,7 +253,7 @@ void drawIcicle3(){
 	glPopAttrib();
 }
 
-void drawIcicle4(){
+void drawIcicle4(float x, float y){
 	glPushAttrib(GL_ALL_ATTRIB_BITS);
 	glColor3f(1, 1, 1);
 	glNormal3f(0, 0, 1);
@@ -261,30 +265,67 @@ void drawIcicle4(){
 
 	glBegin(GL_POLYGON);
 	glTexCoord2f(textureX + 1, textureY + 1);
-	glVertex3f(0, 0, 0);
+	glVertex3f(x, y, 0);
 	glTexCoord2f(textureX, textureY + 1);
-	glVertex3f(0.4, 1, 0);
+	glVertex3f(x + 0.4, y + 1, 0);
 	glTexCoord2f(textureX, textureY);
-	glVertex3f(0.25, 0.9, 0);
+	glVertex3f(x + 0.25, y + 0.9, 0);
 	glTexCoord2f(textureX, textureY + 1);
-	glVertex3f(0.1, 0.98, 0);
+	glVertex3f(x + 0.1, y + 0.98, 0);
 	glTexCoord2f(textureX, textureY);
-	glVertex3f(0, 0.92, 0);
+	glVertex3f(x, y + 0.92, 0);
 	glTexCoord2f(textureX, textureY + 1);
-	glVertex3f(-0.2, 0.98, 0);
+	glVertex3f(x - 0.2, y + 0.98, 0);
 	glTexCoord2f(textureX, textureY);
-	glVertex3f(-0.3, 0.92, 0);
+	glVertex3f(x - 0.3, y + 0.92, 0);
 	glTexCoord2f(textureX, textureY + 1);
-	glVertex3f(-0.4, 1, 0);
+	glVertex3f(x - 0.4, y + 1, 0);
 
 	glEnd();
 
 	glPopAttrib();
 }
 
+GLfloat calculateAngle(){
+	Vec3Df copy_direction = direction;
+	copy_direction[1] = -copy_direction[1];
+	double dot = Vec3Df::dotProduct(previousPosition, copy_direction);
+	double lengthOfPrev = previousPosition.normalize();
+	double lengthOfDir = direction.normalize();
+	double CosOfAngle = dot / (lengthOfDir*lengthOfDir);
+	GLfloat result = acos(CosOfAngle);
+	//printf("arc %f", result);
+	return result;
+}
 
 void mouseAttack(int button, int state, int x, int y){
-	printf("X is %d and Y is %d", x, y);
+	if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN){
+		GLint viewport[4]; //variable that holds normalized device coordinates (window coordinates)
+		GLdouble modelview[16]; //variable that holds world coordinates (what the eye can see)
+		GLdouble projection[16]; //variable that holds the projection coordinates (clip coordinates)
+		GLdouble winX, winY, winZ; //variables to hold screen x,y,z coordinates
+		GLdouble worldX, worldY, worldZ; //variables to hold world x,y,z coordinates
+
+		glGetIntegerv(GL_VIEWPORT, viewport); //get the viewport info
+		glGetDoublev(GL_MODELVIEW_MATRIX, modelview); //get the modelview info
+		glGetDoublev(GL_PROJECTION_MATRIX, projection); //get the projection matrix info
+
+
+		winX = (GLdouble)x;
+		winY = (GLdouble)y;
+		winZ = 0;
+
+		//get the world coordinates from the screen coordinates
+		gluUnProject(winX, winY, winZ, modelview, projection, viewport, &worldX, &worldY, &worldZ);
+		Vec3Df characterPosition = Vec3Df(0, 0.2, 0);
+		Vec3Df mousePosition = Vec3Df(worldX, worldY, worldZ);
+		if (characterPosition != mousePosition){
+			direction = mousePosition.operator-=(characterPosition);
+			direction = direction.unit();
+			attackLaunched = true;
+		}
+		printf("X is %f and Y is %f\n", direction[0], direction[1]);
+	}
 }
 
 
@@ -320,6 +361,15 @@ void animate()
 	textureY = textureY + 0.0003;
 	//		moveTexture = false;
 	//	}
+
+	if (attackLaunched) {
+		angleOfIcicle = (180 * calculateAngle()) / 3.14;
+		rotationZ = 1;
+		iceX += 0.001 * direction[0];
+		iceY += 0.001 * direction[1];
+		//	fireX += 0.0001 * direction[0];
+		//	fireY += 0.0001 * direction[1];
+	}
 }
 
 
@@ -489,7 +539,7 @@ void initTexture()
 	Texture[1] = 0;
 	Texture[2] = 0;
 
-	PPMImage image("fire2.ppm");
+	PPMImage image("ice1.ppm");
 	glGenTextures(1, &Texture[0]);
 	glBindTexture(GL_TEXTURE_2D, Texture[0]);
 	gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGB, image.sizeX, image.sizeY,
@@ -640,7 +690,8 @@ void display()
 	case ICICLE2:
 		glEnable(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D, Texture[0]);
-		drawIcicle2();
+		glRotatef(angleOfIcicle, rotationX, rotationY, rotationZ);
+		drawIcicle2(iceX, iceY);
 		glBindTexture(GL_TEXTURE_2D, 0);
 		glDisable(GL_TEXTURE_2D);
 		break;
@@ -654,7 +705,9 @@ void display()
 	case ICICLE4:
 		glEnable(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D, Texture[0]);
-		drawIcicle4();
+		glTranslatef(0, -1, 0);
+		glRotatef(angleOfIcicle, rotationX, rotationY, rotationZ);
+		drawIcicle4(fireX, fireY);
 		glBindTexture(GL_TEXTURE_2D, 0);
 		glDisable(GL_TEXTURE_2D);
 		break;
@@ -756,8 +809,8 @@ int main(int argc, char** argv)
 	glutReshapeFunc(reshape);
 	glutKeyboardFunc(keyboard);
 	glutDisplayFunc(displayInternal);
-	//	glutMouseFunc(mouseAttack);  //my function for attack
-	glutMouseFunc(tbMouseFunc);    // traqueboule utilise la souris
+	glutMouseFunc(mouseAttack);  //my function for attack
+	//	glutMouseFunc(tbMouseFunc);    // traqueboule utilise la souris
 	glutMotionFunc(tbMotionFunc);  // traqueboule utilise la souris
 	glutIdleFunc(animate);
 
